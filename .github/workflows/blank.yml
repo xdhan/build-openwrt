@@ -1,0 +1,113 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Build OpenWrt
+
+# Controls when the action will run. Triggers the workflow on push or pull request
+# events but only for the master branch
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+env:
+  TZ: Asia/Shanghai
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: true
+  UPLOAD_WETRANSFER: true
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+    # Runs a single command using the runners shell
+    - name: Run a one-line script
+      run: echo Hello, world!
+
+    # Runs a set of commands using the runners shell
+    - name: Initialization 
+      run: |
+        sudo apt update
+        sudo apt install -y subversion build-essential libncurses5-dev zlib1g-dev gawk git ccache gettext libssl-dev xsltproc zip
+        sudo apt autoremove --purge -y
+        sudo timedatectl set-timezone "$TZ"
+        
+    - name: Config build
+      run: |
+        git clone https://gitee.com/xdhan/openwrt-19.07.2.git openwrt
+        cd openwrt
+        git checkout dev
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        make defconfig
+        
+    - name: Compile the firmware
+      id: compile
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 V=s
+        echo "::set-output name=status::success"
+        time=`date '+%Y-%m-%d %H:%M:%S'`
+        echo "::set-env name=TIME::$time"
+        
+    - name: Organize files
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        echo "::set-env name=FIRMWARE::$PWD"
+        echo "::set-output name=status::success"
+        
+    - name: Upload bin directory
+      uses: actions/upload-artifact@v1
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_firmware
+        path: ${{ env.FIRMWARE }}
+        
+    - name: Download transfer
+      run: |
+        curl -fsSL git.io/file-transfer | sh
+        
+    - name: Upload firmware to cowtransfer
+      if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
+      run: |
+        res=`./transfer cow --block 2621440 -s -p 99 -t 3 --hash --no-progress ${FIRMWARE}`
+        echo "cowtransfer 上传结果: $res"
+        echo "::set-env name=RESULT_COW::$res"
+        
+    - name: Upload firmware to WeTransfer
+      if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
+      run: |
+        res=`./transfer wet -s -p 16 --no-progress ${FIRMWARE}`
+        echo "WeTransfer 上传结果: $res"
+        echo "::set-env name=RESULT_WET::$res"
+        
+    - name: Send mail
+      uses: dawidd6/action-send-mail@v2
+      with:
+        server_address: smtp.163.com
+        server_port: 465
+        username: ${{secrets.MAIL_USERNAME}}
+        password: ${{secrets.MAIL_PASSWORD}}
+        subject: Github Actions job result
+        # Literal body:
+        body: ${{ env.TIME }} openwrt-19.07.2 编译结果 \n${{ env.RESULT_COW }} \n${{ env.RESULT_WET }}
+        # Read file contents as body:
+        # body: file://README.md
+        to: ${{secrets.MAIL}},${{secrets.MAIL_C}}
+        from: Github Actions # <user@example.com>
+        # Optional content type (defaults to text/plain):
+        content_type: text/html
+        # Optional attachments:
+        # attachments: attachments.zip,git.diff,./dist/static/main.js
+        
