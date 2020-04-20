@@ -12,8 +12,8 @@ on:
 env:
   TZ: Asia/Shanghai
   UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: true
-  UPLOAD_WETRANSFER: true
+  UPLOAD_COWTRANSFER: false
+  UPLOAD_WETRANSFER: false
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -81,14 +81,14 @@ jobs:
     - name: Upload firmware to cowtransfer
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
       run: |
-        res=`./transfer cow --block 2621440 -s -p 99 -t 3 --hash --no-progress ${FIRMWARE}`
+        res=`./transfer cow --block 2621440 -s -p 99 -t 3 --hash --no-progress ${FIRMWARE} | grep Download`
         echo "cowtransfer 上传结果: $res"
         echo "::set-env name=RESULT_COW::$res"
         
     - name: Upload firmware to WeTransfer
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
       run: |
-        res=`./transfer wet -s -p 16 --no-progress ${FIRMWARE}`
+        res=`./transfer wet -s -p 16 --no-progress ${FIRMWARE} | grep Download`
         echo "WeTransfer 上传结果: $res"
         echo "::set-env name=RESULT_WET::$res"
         
