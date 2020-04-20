@@ -46,6 +46,7 @@ jobs:
         git checkout dev
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+        cp ../.config .config
         make defconfig
         
     - name: Compile the firmware
@@ -74,9 +75,9 @@ jobs:
         name: OpenWrt_firmware
         path: ${{ env.FIRMWARE }}
         
-    - name: Download transfer
-      run: |
-        curl -fsSL git.io/file-transfer | sh
+    #- name: Download transfer
+    #  run: |
+    #    curl -fsSL git.io/file-transfer | sh
         
     - name: Upload firmware to cowtransfer
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
